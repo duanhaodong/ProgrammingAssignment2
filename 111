@@ -765,7 +765,10 @@ int naive_distance(Pacman::FieldProp p1,Pacman::FieldProp p2,Pacman::GameField& 
 	 return d1+d2;
 }
 
+int dist[20][20][20][20];
 int true_distance(Pacman::FieldProp p1,Pacman::FieldProp p2,Pacman::GameField& gameField=*gmfield){
+	if(dist[p1.row][p1.col][p2.row][p2.col]!=0x7f7f7f7f)
+	return dist[p1.row][p1.col][p2.row][p2.col];
 	bool visited[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
 	int dis[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
 	memset(visited,0,sizeof(visited));
@@ -788,6 +791,8 @@ int true_distance(Pacman::FieldProp p1,Pacman::FieldProp p2,Pacman::GameField& g
 			}
 		}
 	}
+	dist[p1.row][p1.col][p2.row][p2.col]=dis[p2.row][p2.col];
+	dist[p2.row][p2.col][p1.row][p1.col]=dis[p2.row][p2.col];
 	return dis[p2.row][p2.col];
 }
 
@@ -828,7 +833,7 @@ double val_apple(Player pp,Pacman::FieldProp p1,Pacman::FieldProp p2,Pacman::Gam
 		}
 	}
 	if(n==0) return flag*f*2;
-	return flag*f/((n+1)*(n+1))*sqrt(cnt);
+	return flag*f/((n+1)*(n+1)*(n+1))*sqrt(cnt);
 } 
 
 
@@ -879,19 +884,7 @@ Ans FindLiveDirection(Pacman::GameField &gameField, int TimeLeft, int myID, int 
 		if (gameField.ActionValid(myID, dir) && !MustbeDead(gameField, myID, dir)) {
 			for (int playerID = 0; playerID < MAX_PLAYER_COUNT; playerID++) {
 				Direction maxD = Pacman::stay;
-				/*
-				if (!gameField.players[playerID].dead && MaybeDead(gameField, playerID, maxD)) {
-					for (Direction Dir = Pacman::up; Dir < 4; ++Dir) {
-						if (gameField.ActionValid(playerID, Dir) && !MaybeDead(gameField, playerID, Dir))
-							maxD = Dir;
-					}
-					if (maxD == Pacman::stay && MaybeDead(gameField, myID, maxD))
-						for (Direction Dir = Pacman::up; Dir < 4; ++Dir) {
-							if (gameField.ActionValid(playerID, Dir) && !MustbeDead(gameField, playerID, Dir))
-								maxD = Dir;
-						}
-				}
-				*/
+				
 				gameField.actions[playerID] = maxD;
 			}
 			gameField.actions[myID] = dir;
@@ -942,30 +935,47 @@ int my_AI(GameField& gameField,int my_ID){
 		priority[dir+1]=-1000;
 	}
 	
+	bool speflag=1;
+	for(int i=0;i<4;i++){
+		if(i!=my_ID&&!gameField.players[i].dead){
+			FieldProp p1=gameField.players[i];
+			FieldProp p2=gameField.players[my_ID];
+			if(p1.col==p2.col&&p1.row==p2.row){
+				speflag=0;
+				Direction dir=(Direction)((rand()%5)-1);
+				while(!gameField.ActionValid(my_ID,dir)||priority[dir+1]<-10.0)
+				Direction dir=(Direction)((rand()%5)-1);
+				priority[dir+1]+=3;
+			}
+		}
+	}
+	
 	//rep(i,0,4) cout<<priority[i]<<" ";
 	//cout<<endl;
 	
 	//处理追&逃
-	Ans ans(1);
-	rep(i,0,3){
-		if(i!=my_ID&&!gameField.players[i].dead)
-		ans=ans&FindLiveDirection(gameField, 5, my_ID, i);
-	}
-	rep(i,0,4)
-	if(ans.dir[i]) ;
-	else priority[i]-=1000;
-	
-	//rep(i,0,4) cout<<priority[i]<<" ";
-	//cout<<endl;
-	
-	rep(i,0,4){
-		if(i!=my_ID&&!gameField.players[i].dead&&gameField.players[i].strength<gameField.players[my_ID].strength){
-			Ans ans=FindLiveDirection(gameField, 2, i, my_ID);
-			if(!ans.live()){
-				for(Direction dir=stay;dir<4;++dir){
-					FieldProp p=next(me,dir,gameField);
-					if(true_distance(p,gameField.players[i])<true_distance(me,gameField.players[i]))
-					priority[dir+1]+=(double)gameField.players[i].strength/10.0;
+	if(speflag){
+		Ans ans(1);
+		rep(i,0,3){
+			if(i!=my_ID&&!gameField.players[i].dead)
+			ans=ans&FindLiveDirection(gameField, 4, my_ID, i);
+		}
+		rep(i,0,4)
+		if(ans.dir[i]) ;
+		else priority[i]-=1000;
+		
+		//rep(i,0,4) cout<<priority[i]<<" ";
+		//cout<<endl;
+		
+		rep(i,0,4){
+			if(i!=my_ID&&!gameField.players[i].dead&&gameField.players[i].strength<gameField.players[my_ID].strength){
+				Ans ans=FindLiveDirection(gameField, 2, i, my_ID);
+				if(!ans.live()){
+					for(Direction dir=stay;dir<4;++dir){
+						FieldProp p=next(me,dir,gameField);
+						if(true_distance(p,gameField.players[i])<true_distance(me,gameField.players[i]))
+						priority[dir+1]+=(double)gameField.players[i].strength/10.0;
+					}
 				}
 			}
 		}
@@ -984,7 +994,7 @@ int my_AI(GameField& gameField,int my_ID){
 						if(true_distance(p,tmp,gameField)>true_distance(me,tmp,gameField))
 						;
 						if(true_distance(p,tmp,gameField)<true_distance(me,tmp,gameField))
-						priority[dir+1]-=100;
+						priority[dir+1]-=1000;
 					}
 					if(tmp.strength<me.strength&&me.powerUpLeft!=1&&true_distance(tmp,me)<=2){
 						FieldProp p=next(me,dir,gameField);
@@ -1002,18 +1012,7 @@ int my_AI(GameField& gameField,int my_ID){
 	//cout<<endl;
 	
 	
-	for(int i=0;i<4;i++){
-		if(i!=my_ID&&!gameField.players[i].dead){
-			FieldProp p1=gameField.players[i];
-			FieldProp p2=gameField.players[my_ID];
-			if(p1.col==p2.col&&p1.row==p2.row){
-				Direction dir=(Direction)((rand()%5)-1);
-				while(!gameField.ActionValid(my_ID,dir)||priority[dir+1]<-10.0)
-				Direction dir=(Direction)((rand()%5)-1);
-				priority[dir+1]+=3;
-			}
-		}
-	}
+	
 	
 	//rep(i,0,4) cout<<priority[i]<<" ";
 	//cout<<endl;
@@ -1101,31 +1100,6 @@ int my_AI(GameField& gameField,int my_ID){
 			}
 		}
 		
-		/*
-		if(gameField.generatorTurnLeft<=5||cnt==0){
-			int d=0x7f,id=0;
-			for(int i=0;i<gameField.generatorCount;i++){
-				int dist=true_distance(me,gameField.generators[i],gameField);
-				rep(j,0,3){
-					if(!gameField.players[j].dead){
-						if(gameField.players[j].strength>gameField.players[my_ID].strength) 
-						if(true_distance(gameField.players[j],gameField.generators[i],gameField)<=2)
-						dist+=2;
-					}
-				}
-				if(dist<d){
-					d=dist;
-					id=i;
-				}
-			}
-			if(true_distance(me,gameField.generators[id],gameField)<=2)
-			continue;
-			if(true_distance(tmp,gameField.generators[id],gameField)<true_distance(tmp,gameField.generators[id],gameField))
-			priority[dir+1]+=5;
-			else
-			priority[dir+1]-=5;
-		} 
-		*/
 	} 
 	mx=0;
 	rep(i,0,4){
@@ -1157,6 +1131,7 @@ int my_AI(GameField& gameField,int my_ID){
  
 int main()
 {
+	memset(dist,0x7f,sizeof(dist));
 	srand(time(0));
 	Pacman::GameField gameField;
 	gmfield=&gameField;
@@ -1166,15 +1141,7 @@ int main()
 	int myID = gameField.ReadInput("input.txt", data, globalData); // 输入，并获得自己ID
 	srand(Pacman::seed + myID);
  
-	// 简单随机，看哪个动作随机赢得最多
-	/*
-	for (int i = 0; i < 1000; i++)
-		Helpers::RandomPlay(gameField, myID);
-	int maxD = 0, d;
-	for (d = 0; d < 5; d++)
-		if (Helpers::actionScore[d] > Helpers::actionScore[maxD])
-			maxD = d;
-	*/
+ 
 	int maxD;
 			
  	maxD=my_AI(gameField,myID);
